@@ -1,0 +1,116 @@
+<!-- File: templates/dashboard.html -->
+<!-- Purpose: Dashboard page showing calculations for the logged-in user -->
+{% extends "layout.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="dashboard">
+  <div class="dashboard-header">
+    <h2>Calculations Dashboard</h2>
+    <div>
+      <span id="userWelcome"></span>
+      <button id="logoutBtn" class="btn btn-danger" style="margin-left:1rem;">Logout</button>
+    </div>
+  </div>
+
+  <div id="errorAlert" class="alert alert-error hidden"><span id="errorMessage"></span></div>
+  <div id="successAlert" class="alert alert-success hidden"><span id="successMessage"></span></div>
+
+  <div class="card" style="margin-bottom:1.5rem;">
+    <h3>New Calculation</h3>
+    <form id="calculationForm">
+      <div style="display:flex; gap:1rem; flex-wrap:wrap;">
+        <div class="form-group">
+          <label for="calcType">Type</label>
+          <select id="calcType">
+            <option value="addition">Addition</option>
+            <option value="subtraction">Subtraction</option>
+            <option value="multiplication">Multiplication</option>
+            <option value="division">Division</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex:1;">
+          <label for="calcInputs">Numbers (comma-separated)</label>
+          <input type="text" id="calcInputs" placeholder="e.g. 5,10,15">
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary">Calculate</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Calculation History</h3>
+    <table class="table">
+      <thead>
+        <tr><th>Type</th><th>Inputs</th><th>Result</th><th>Date</th><th>Actions</th></tr>
+      </thead>
+      <tbody id="calculationsTable"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const token = localStorage.getItem('access_token');
+  if (!token) { window.location.href = '/login'; return; }
+
+  document.getElementById('userWelcome').textContent = 'Welcome, ' + (localStorage.getItem('username') || 'User') + '!';
+
+  function showError(msg) {
+    document.getElementById('errorMessage').textContent = msg;
+    document.getElementById('errorAlert').classList.remove('hidden');
+    setTimeout(() => document.getElementById('errorAlert').classList.add('hidden'), 5000);
+  }
+  function showSuccess(msg) {
+    document.getElementById('successMessage').textContent = msg;
+    document.getElementById('successAlert').classList.remove('hidden');
+    setTimeout(() => document.getElementById('successAlert').classList.add('hidden'), 5000);
+  }
+
+  document.getElementById('logoutBtn').addEventListener('click', function () {
+    localStorage.clear();
+    window.location.href = '/login';
+  });
+
+  async function loadCalculations() {
+    const resp = await fetch('/calculations', { headers: { Authorization: 'Bearer ' + token } });
+    if (resp.status === 401) { localStorage.clear(); window.location.href = '/login'; return; }
+    const calcs = await resp.json();
+    const tbody = document.getElementById('calculationsTable');
+    tbody.innerHTML = '';
+    if (calcs.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No calculations yet.</td></tr>';
+      return;
+    }
+    calcs.forEach(c => {
+      const row = document.createElement('tr');
+      row.innerHTML = `<td>${c.type}</td><td>${c.inputs.join(', ')}</td><td>${c.result}</td>
+        <td>${new Date(c.created_at).toLocaleString()}</td>
+        <td><button class="btn btn-danger btn-sm" onclick="deleteCalc('${c.id}')">Delete</button></td>`;
+      tbody.appendChild(row);
+    });
+  }
+
+  document.getElementById('calculationForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const type = document.getElementById('calcType').value;
+    const inputs = document.getElementById('calcInputs').value.split(',').map(Number).filter(n => !isNaN(n));
+    if (inputs.length < 2) return showError('Enter at least 2 numbers separated by commas');
+    const resp = await fetch('/calculations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ type, inputs }),
+    });
+    if (!resp.ok) { const j = await resp.json(); return showError(j.detail || 'Failed'); }
+    showSuccess('Calculation added!');
+    loadCalculations();
+  });
+
+  window.deleteCalc = async function (id) {
+    await fetch('/calculations/' + id, { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } });
+    loadCalculations();
+  };
+
+  loadCalculations();
+});
+</script>
+{% endblock %}
