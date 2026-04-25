@@ -1,2 +1,4 @@
-// Your JavaScript code can go here.
-console.log("JavaScript loaded!");
+// File: static/js/script.js
+// Purpose: Shared JS utilities loaded on every page
+
+console.log("App loaded.");
