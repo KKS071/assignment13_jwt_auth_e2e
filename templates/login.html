@@ -1,0 +1,84 @@
+<!-- File: templates/login.html -->
+<!-- Purpose: Login page with client-side validation and JWT storage -->
+{% extends "layout.html" %}
+{% block title %}Login{% endblock %}
+{% block content %}
+<div class="form-container">
+  <h2>Sign In</h2>
+
+  <div id="errorAlert" class="alert alert-error hidden">
+    <span id="errorMessage"></span>
+  </div>
+  <div id="successAlert" class="alert alert-success hidden">
+    <span id="successMessage"></span>
+  </div>
+
+  <form id="loginForm" novalidate>
+    <div class="form-group">
+      <label for="username">Username or Email</label>
+      <input type="text" id="username" name="username" required>
+    </div>
+    <div class="form-group">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" required>
+    </div>
+    <button type="submit" class="btn btn-primary">Login</button>
+  </form>
+
+  <p style="margin-top:1rem; text-align:center;">
+    Don't have an account? <a href="/register">Register</a>
+  </p>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const form = document.getElementById('loginForm');
+  const errorAlert = document.getElementById('errorAlert');
+  const errorMsg = document.getElementById('errorMessage');
+  const successAlert = document.getElementById('successAlert');
+  const successMsg = document.getElementById('successMessage');
+
+  function showError(msg) {
+    errorMsg.textContent = msg;
+    errorAlert.classList.remove('hidden');
+    successAlert.classList.add('hidden');
+  }
+
+  function showSuccess(msg) {
+    successMsg.textContent = msg;
+    successAlert.classList.remove('hidden');
+    errorAlert.classList.add('hidden');
+  }
+
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    errorAlert.classList.add('hidden');
+    successAlert.classList.add('hidden');
+
+    const username = form.username.value.trim();
+    const password = form.password.value;
+
+    if (!username) return showError('Please enter your username or email');
+    if (!password) return showError('Please enter your password');
+
+    try {
+      const resp = await fetch('/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.detail || 'Login failed');
+
+      // Store token and redirect to dashboard
+      localStorage.setItem('access_token', json.access_token);
+      localStorage.setItem('username', json.username);
+      showSuccess('Login successful! Redirecting...');
+      setTimeout(() => { window.location.href = '/dashboard'; }, 500);
+    } catch (err) {
+      showError(err.message || 'An error occurred');
+    }
+  });
+});
+</script>
+{% endblock %}
