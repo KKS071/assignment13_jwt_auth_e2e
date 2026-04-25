@@ -1,0 +1,129 @@
+<!-- File: templates/register.html -->
+<!-- Purpose: Registration page with client-side validation -->
+{% extends "layout.html" %}
+{% block title %}Register{% endblock %}
+{% block content %}
+<div class="form-container">
+  <h2>Create Account</h2>
+
+  <div id="errorAlert" class="alert alert-error hidden">
+    <span id="errorMessage"></span>
+  </div>
+  <div id="successAlert" class="alert alert-success hidden">
+    <span id="successMessage"></span>
+  </div>
+
+  <form id="registrationForm" novalidate>
+    <div class="form-group">
+      <label for="first_name">First Name</label>
+      <input type="text" id="first_name" name="first_name" required>
+    </div>
+    <div class="form-group">
+      <label for="last_name">Last Name</label>
+      <input type="text" id="last_name" name="last_name" required>
+    </div>
+    <div class="form-group">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" required>
+    </div>
+    <div class="form-group">
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email" required>
+    </div>
+    <div class="form-group">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" required>
+    </div>
+    <div class="form-group">
+      <label for="confirm_password">Confirm Password</label>
+      <input type="password" id="confirm_password" name="confirm_password" required>
+    </div>
+    <button type="submit" class="btn btn-primary">Register</button>
+  </form>
+
+  <p style="margin-top:1rem; text-align:center;">
+    Already have an account? <a href="/login">Log in</a>
+  </p>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const form = document.getElementById('registrationForm');
+  const errorAlert = document.getElementById('errorAlert');
+  const errorMsg = document.getElementById('errorMessage');
+  const successAlert = document.getElementById('successAlert');
+  const successMsg = document.getElementById('successMessage');
+
+  function showError(msg) {
+    errorMsg.textContent = msg;
+    errorAlert.classList.remove('hidden');
+    successAlert.classList.add('hidden');
+  }
+
+  function showSuccess(msg) {
+    successMsg.textContent = msg;
+    successAlert.classList.remove('hidden');
+    errorAlert.classList.add('hidden');
+  }
+
+  function isValidEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  }
+
+  function isValidPassword(pw) {
+    return pw.length >= 8 && /[A-Z]/.test(pw) && /[a-z]/.test(pw) && /[0-9]/.test(pw);
+  }
+
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    errorAlert.classList.add('hidden');
+    successAlert.classList.add('hidden');
+
+    const data = {
+      first_name: form.first_name.value.trim(),
+      last_name: form.last_name.value.trim(),
+      username: form.username.value.trim(),
+      email: form.email.value.trim(),
+      password: form.password.value,
+      confirm_password: form.confirm_password.value,
+    };
+
+    if (!data.username || data.username.length < 3) {
+      return showError('Username must be at least 3 characters');
+    }
+    if (!isValidEmail(data.email)) {
+      return showError('Please enter a valid email address');
+    }
+    if (!isValidPassword(data.password)) {
+      return showError('Password must be at least 8 characters and include uppercase, lowercase, and a number');
+    }
+    if (data.password !== data.confirm_password) {
+      return showError('Passwords do not match');
+    }
+
+    try {
+      const resp = await fetch('/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.detail || 'Registration failed');
+      showSuccess('Registration successful! Redirecting to login...');
+      setTimeout(() => { window.location.href = '/login'; }, 2000);
+    } catch (err) {
+      showError(err.message || 'An error occurred');
+    }
+  });
+
+  // Real-time password match hint
+  form.confirm_password.addEventListener('keyup', function () {
+    if (this.value && form.password.value !== this.value) {
+      this.setCustomValidity("Passwords don't match");
+    } else {
+      this.setCustomValidity('');
+    }
+  });
+});
+</script>
+{% endblock %}
