@@ -20,5 +20,5 @@ faker==36.1.0
 pytest==8.3.4
 pytest-cov==6.0.0
 playwright==1.50.0
-cryptography==44.0.0
+cryptography==46.0.5
 redis>=5.0.0
