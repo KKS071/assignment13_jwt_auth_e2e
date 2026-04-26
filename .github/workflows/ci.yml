@@ -1,26 +1,21 @@
-# File: .github/workflows/ci.yml
-# Purpose: CI/CD pipeline – test → security scan → Docker push
-
 name: CI/CD
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   pull_request:
-    branches: [main]
+    branches: [ main ]
 
 jobs:
-  # ── 1. Run pytest + pytest-cov ─────────────────────────────────────────
   test:
     runs-on: ubuntu-latest
-
     services:
       postgres:
-        image: postgres:17
+        image: postgres:latest
         env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: fastapi_db
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: mytestdb  # <-- Dedicated test DB name
         ports:
           - 5432:5432
         options: >-
@@ -28,127 +23,78 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-
-    env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/fastapi_db
-      JWT_SECRET_KEY: "super-secret-key-change-in-production-min32chars"
-      JWT_REFRESH_SECRET_KEY: "super-refresh-key-change-in-production-min32"
-      ALGORITHM: HS256
-      ACCESS_TOKEN_EXPIRE_MINUTES: 30
-      REFRESH_TOKEN_EXPIRE_DAYS: 7
-      BCRYPT_ROUNDS: 4
-
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v3
+      
+      - uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
-          cache: "pip"
-
+          python-version: '3.10'
+          
+      - uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      
       - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Run unit + integration tests
-        run: |
-          pytest tests/unit/ tests/integration/ \
-            --cov=app --cov-report=term-missing \
-            --junitxml=test-results/junit.xml
-
-      - name: Upload coverage HTML
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: htmlcov/
-
-  # ── 2. Run Playwright E2E tests ────────────────────────────────────────
-  e2e:
-    needs: test
-    runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:17
         env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: fastapi_db
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/fastapi_db
-      JWT_SECRET_KEY: "super-secret-key-change-in-production-min32chars"
-      JWT_REFRESH_SECRET_KEY: "super-refresh-key-change-in-production-min32"
-      ALGORITHM: HS256
-      ACCESS_TOKEN_EXPIRE_MINUTES: 30
-      REFRESH_TOKEN_EXPIRE_DAYS: 7
-      BCRYPT_ROUNDS: 4
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-          cache: "pip"
-
-      - name: Install dependencies
+          DATABASE_URL: postgresql://user:password@localhost:5432/mytestdb
         run: |
+          python -m venv venv
+          source venv/bin/activate
           pip install --upgrade pip
           pip install -r requirements.txt
-
-      - name: Install Playwright browsers
-        run: playwright install --with-deps chromium
-
-      - name: Run E2E tests
+          playwright install  # if you use Playwright for e2e tests
+      
+      - name: Run tests
+        env:
+          DATABASE_URL: postgresql://user:password@localhost:5432/mytestdb
         run: |
-          pytest tests/e2e/ -m e2e --no-cov -v
+          source venv/bin/activate
+          
+          # 1) Unit tests
+          pytest tests/unit/ --cov=src --junitxml=test-results/junit.xml
+          
+          # 2) Integration tests
+          pytest tests/integration/
+          
+          # 3) E2E or other tests
+          pytest tests/e2e/
 
-  # ── 3. Trivy vulnerability scan ────────────────────────────────────────
   security:
     needs: test
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Build image for scanning
-        run: docker build -t app:scan .
-
+      
+      - name: Build image
+        run: docker build -t app:test .
+      
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: "app:scan"
-          format: "table"
-          exit-code: "1"
+          image-ref: 'app:test'
+          format: 'table'
+          exit-code: '1'
           ignore-unfixed: true
-          severity: "CRITICAL,HIGH"
-
-  # ── 4. Build & push to Docker Hub ─────────────────────────────────────
+          severity: 'CRITICAL,HIGH'
+  
   deploy:
-    needs: [e2e, security]
+    needs: security
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production
-
     steps:
       - uses: actions/checkout@v4
-
+      
       - uses: docker/setup-buildx-action@v3
-
+      
       - uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
+          
       - uses: docker/build-push-action@v5
         with:
           push: true
