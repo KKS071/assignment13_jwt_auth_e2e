@@ -1,6 +1,3 @@
-# File: README.md
-# Purpose: Project documentation, setup, and usage guide
-
 # Assignment 13 – JWT Auth E2E
 
 A FastAPI application with JWT authentication, PostgreSQL, Playwright E2E tests, and a full CI/CD pipeline.
@@ -14,9 +11,70 @@ A FastAPI application with JWT authentication, PostgreSQL, Playwright E2E tests,
 
 - **Backend:** FastAPI, SQLAlchemy, psycopg2, python-jose, passlib/bcrypt
 - **Frontend:** Jinja2 templates, vanilla JS
-- **Tests:** pytest, pytest-cov, Playwright
-- **CI/CD:** GitHub Actions
-- **Containers:** Docker, Docker Compose
+- **Tests:** pytest, pytest-cov, Playwright (all suites run in one pass)
+- **CI/CD:** GitHub Actions (test → security scan → Docker push)
+- **Containers:** Docker, Docker Compose, pgAdmin
+
+---
+
+## Project Structure
+
+```
+assignment13_jwt_auth_e2e/
+├── app/
+│   ├── auth/
+│   │   ├── dependencies.py   # FastAPI auth dependencies
+│   │   └── jwt.py            # Token creation/verification
+│   ├── core/
+│   │   └── config.py         # Settings via pydantic-settings
+│   ├── models/
+│   │   ├── calculation.py    # Polymorphic calculation ORM model
+│   │   └── user.py           # User ORM model with auth methods
+│   ├── schemas/
+│   │   ├── base.py           # Shared base schemas
+│   │   ├── calculation.py    # Calculation request/response schemas
+│   │   ├── token.py          # JWT token schemas
+│   │   └── user.py           # User request/response schemas
+│   ├── database.py           # Engine, session, get_db dependency
+│   ├── database_init.py      # init_db / drop_db with CASCADE support
+│   ├── main.py               # FastAPI app + all routes
+│   └── operations.py         # Arithmetic helper functions
+├── templates/
+│   ├── layout.html
+│   ├── index.html
+│   ├── register.html         # Client-side validation + success/error alerts
+│   ├── login.html            # JWT stored in localStorage on success
+│   └── dashboard.html        # Calculations UI
+├── static/
+│   ├── css/style.css
+│   └── js/script.js
+├── tests/
+│   ├── conftest.py           # Shared fixtures (DB, fastapi_server, Playwright)
+│   ├── unit/
+│   │   └── test_calculator.py
+│   ├── integration/
+│   │   ├── test_api.py
+│   │   ├── test_calculations.py
+│   │   ├── test_database.py
+│   │   ├── test_dependencies.py
+│   │   ├── test_get_db.py
+│   │   ├── test_jwt.py
+│   │   ├── test_schema_base.py
+│   │   ├── test_user.py
+│   │   └── test_user_auth.py
+│   └── e2e/
+│       └── test_e2e.py       # Playwright tests (positive + negative)
+├── .github/
+│   └── workflows/
+│       └── ci.yml            # Linear pipeline: test → security → deploy
+├── pgadmin_servers.json      # Auto-registers the DB server in pgAdmin
+├── .env.example
+├── docker-compose.yml
+├── Dockerfile
+├── init-db.sh
+├── pytest.ini
+└── requirements.txt
+```
 
 ---
 
@@ -33,7 +91,7 @@ cd assignment13_jwt_auth_e2e
 
 ```bash
 python -m venv venv
-source venv/bin/activate          # Windows: venv\Scripts\activate
+source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
@@ -41,91 +99,151 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Edit .env with your database URL and secret keys
+# Edit .env with your database URL and secret keys if needed
+```
+
+---
+
+## JWT Authentication
+
+### Registration — `POST /auth/register`
+
+Accepts user data, validates it with Pydantic, hashes the password using bcrypt, and stores the new user. Returns a `UserResponse` on success or `400` if the username/email already exists.
+
+```bash
+curl -X POST http://127.0.0.1:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "first_name": "Jane",
+    "last_name": "Doe",
+    "username": "janedoe",
+    "email": "jane@example.com",
+    "password": "SecurePass1!",
+    "confirm_password": "SecurePass1!"
+  }'
+```
+
+### Login — `POST /auth/login`
+
+Verifies the username/email and hashed password, then returns a JWT access token and refresh token.
+
+```bash
+curl -X POST http://127.0.0.1:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "janedoe", "password": "SecurePass1!"}'
+```
+
+### Pydantic Validation Rules
+
+| Field | Rule |
+|-------|------|
+| `email` | Must be a valid email format |
+| `password` | Min 8 chars, must include uppercase, lowercase, digit, and special character |
+| `confirm_password` | Must match `password` |
+| `username` | Min 3 characters |
+
+### Using a Protected Endpoint
+
+```bash
+# Store the token from login, then pass it as a Bearer header
+curl -H "Authorization: Bearer <access_token>" \
+  http://127.0.0.1:8000/calculations
 ```
 
 ---
 
 ## Running the Backend
 
-Make sure PostgreSQL is running and the database exists, then:
-
 ```bash
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-The API docs are available at: http://127.0.0.1:8000/docs
+API docs: http://127.0.0.1:8000/docs
 
-### Key endpoints
+### All API Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/auth/register` | Create a new user |
-| POST | `/auth/login` | Login and get JWT tokens |
-| POST | `/auth/token` | OAuth2 form login (Swagger UI) |
-| GET | `/calculations` | List user calculations (auth required) |
-| POST | `/calculations` | Run a new calculation (auth required) |
-| GET | `/health` | Health check |
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/auth/register` | No | Create a new user |
+| POST | `/auth/login` | No | Login and receive JWT tokens |
+| POST | `/auth/token` | No | OAuth2 form login (Swagger UI) |
+| GET | `/calculations` | Yes | List user's calculations |
+| POST | `/calculations` | Yes | Run a new calculation |
+| GET | `/calculations/{id}` | Yes | Get one calculation |
+| PUT | `/calculations/{id}` | Yes | Update a calculation |
+| DELETE | `/calculations/{id}` | Yes | Delete a calculation |
+| GET | `/health` | No | Health check |
 
 ---
 
 ## Running the Frontend
 
-The frontend is served by FastAPI as HTML templates:
+The frontend is served directly by FastAPI using Jinja2 templates. Start the backend first, then visit:
 
-- **Home:** http://127.0.0.1:8000/
-- **Register:** http://127.0.0.1:8000/register
-- **Login:** http://127.0.0.1:8000/login
-- **Dashboard:** http://127.0.0.1:8000/dashboard
+| Page | URL |
+|------|-----|
+| Home | http://127.0.0.1:8000/ |
+| Register | http://127.0.0.1:8000/register |
+| Login | http://127.0.0.1:8000/login |
+| Dashboard | http://127.0.0.1:8000/dashboard |
+
+### Frontend Features
+
+- **Registration page:** Client-side validation for email format, password strength (min 8 chars, uppercase, lowercase, digit), and password confirmation match. Shows a green success alert on success and redirects to login.
+- **Login page:** Validates inputs client-side, posts credentials to `/auth/login`, stores the returned JWT in `localStorage`, then redirects to the dashboard.
+- **Dashboard:** Reads the JWT from `localStorage` and includes it as a `Bearer` token on every calculation API request. Redirects to `/login` automatically if no token is present.
 
 ---
 
-## Running pytest
+## Running pytest (All Tests)
 
-Requires a running PostgreSQL instance (see `.env`):
+All unit, integration, and E2E tests run in a single pytest command. Install Playwright browsers once before running:
 
 ```bash
-# All tests with coverage
-pytest
+# One-time browser install
+playwright install --with-deps chromium
 
-# Unit tests only
-pytest tests/unit/
-
-# Integration tests only
-pytest tests/integration/
-
-# With verbose output
-pytest -v
-
-# View HTML coverage report
-open htmlcov/index.html
+# Run all tests with coverage
+pytest tests/ -v
 ```
 
-Coverage is enforced via `pytest.ini`. The target is 100% for `app/`.
+View the HTML coverage report:
+
+```bash
+open htmlcov/index.html       # macOS
+xdg-open htmlcov/index.html   # Linux
+```
+
+### Running specific suites
+
+```bash
+# Unit tests only
+pytest tests/unit/ -v
+
+# Integration tests only
+pytest tests/integration/ -v
+
+# E2E tests only
+pytest tests/e2e/ -m e2e -v --no-cov
+```
 
 ---
 
 ## Running Playwright E2E Tests
 
-Requires the FastAPI server to be running locally:
+The `fastapi_server` session fixture in `conftest.py` automatically starts the FastAPI server before E2E tests run — no manual server startup is needed.
 
 ```bash
-# Install Playwright browsers (first time only)
 playwright install --with-deps chromium
-
-# Start the server in one terminal
-uvicorn app.main:app --host 127.0.0.1 --port 8000
-
-# Run E2E tests in another terminal
-pytest tests/e2e/ -m e2e -v
+pytest tests/e2e/ -m e2e -v --no-cov
 ```
 
-### E2E test coverage
+### E2E Test Coverage
 
-| Test | Type | Description |
-|------|------|-------------|
+| Test | Type | What it checks |
+|------|------|----------------|
 | `test_register_valid_user` | ✅ Positive | Valid registration shows success alert |
-| `test_login_valid_user` | ✅ Positive | Correct credentials redirect to dashboard |
+| `test_login_valid_user` | ✅ Positive | Correct credentials redirect to `/dashboard` |
 | `test_register_short_password` | ❌ Negative | Short password shows error alert |
 | `test_register_invalid_email` | ❌ Negative | Bad email format shows error alert |
 | `test_login_wrong_password` | ❌ Negative | Wrong password shows error alert |
@@ -134,57 +252,68 @@ pytest tests/e2e/ -m e2e -v
 
 ## Running with Docker
 
-### Build and start everything
+### Start the full stack
 
 ```bash
 docker compose up --build
 ```
 
-Services:
-- FastAPI app → http://localhost:8000
-- pgAdmin → http://localhost:5050 (admin@example.com / admin)
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| FastAPI app | http://localhost:8000 | — |
+| pgAdmin | http://localhost:5050 | admin@example.com / admin |
+| PostgreSQL | localhost:5432 | postgres / postgres |
 
-### Run just the app image
+### Connecting pgAdmin to the Database
 
-```bash
-docker build -t jwt-auth-app .
-docker run -p 8000:8000 --env-file .env jwt-auth-app
-```
+pgAdmin does **not** auto-connect to PostgreSQL. On first login at http://localhost:5050:
 
-### Pull from Docker Hub
+1. Right-click **Servers** → **Register → Server…**
+2. **General tab → Name:** `assignment13`
+3. **Connection tab:**
+   - Host: `db` ← Docker service name, **not** `localhost`
+   - Port: `5432`
+   - Database: `fastapi_db`
+   - Username: `postgres`
+   - Password: `postgres`
+4. Click **Save**
+
+You will now see `fastapi_db → Schemas → public → Tables` with `users` and `calculations`.
+
+### Pull and run from Docker Hub
 
 ```bash
 docker pull kks59/601_module13:latest
-docker run -p 8000:8000 kks59/601_module13:latest
+docker run -p 8000:8000 --env-file .env kks59/601_module13:latest
 ```
+
+Docker Hub repo: https://hub.docker.com/r/kks59/601_module13
 
 ---
 
 ## CI/CD Pipeline
 
-The pipeline runs on every push and pull request to `main`. It has four jobs:
+The pipeline runs on every push and pull request to `main` in a strict linear chain:
 
-### Job 1 – `test` (pytest)
+```
+test  →  security  →  deploy
+```
+
+### Job 1 — `test`
 - Spins up a PostgreSQL service container
-- Installs dependencies
-- Runs `pytest tests/unit/ tests/integration/` with `pytest-cov`
-- Uploads HTML coverage report as an artifact
+- Installs all Python dependencies and Playwright + Chromium
+- Runs **all tests** (unit + integration + E2E) in one `pytest tests/` call
+- Uploads HTML coverage report and JUnit XML as artifacts
 
-### Job 2 – `e2e` (Playwright) — runs after `test`
-- Same PostgreSQL service
-- Installs Playwright + Chromium
-- Starts the FastAPI server automatically via `conftest.py` fixture
-- Runs `pytest tests/e2e/ -m e2e`
-
-### Job 3 – `security` (Trivy) — runs after `test`
+### Job 2 — `security` (runs after `test`)
 - Builds the Docker image
 - Scans with [Trivy](https://github.com/aquasecurity/trivy-action) for CRITICAL and HIGH CVEs
-- Fails the build if unfixed critical/high vulnerabilities are found
+- Fails the pipeline if any unfixed vulnerabilities are found
 
-### Job 4 – `deploy` — runs after `e2e` + `security`, on `main` branch only
-- Logs in to Docker Hub using `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` secrets
+### Job 3 — `deploy` (runs after `security`, on `main` branch only)
+- Logs in to Docker Hub using GitHub Secrets
 - Builds a multi-platform image (`linux/amd64`, `linux/arm64`)
-- Pushes `kks59/601_module13:latest` and `kks59/601_module13:<git-sha>`
+- Pushes to `kks59/601_module13:latest` and `kks59/601_module13:<git-sha>`
 
 ### Required GitHub Secrets
 
@@ -194,58 +323,3 @@ Go to **Settings → Secrets and variables → Actions** and add:
 |--------|-------|
 | `DOCKERHUB_USERNAME` | `kks59` |
 | `DOCKERHUB_TOKEN` | Your Docker Hub access token |
-
----
-
-## Project Structure
-
-```
-assignment13_jwt_auth_e2e/
-├── app/
-│   ├── auth/
-│   │   ├── dependencies.py   # FastAPI auth deps
-│   │   └── jwt.py            # Token creation/verification
-│   ├── core/
-│   │   └── config.py         # Settings (pydantic-settings)
-│   ├── models/
-│   │   ├── calculation.py    # Calculation ORM model
-│   │   └── user.py           # User ORM model with auth
-│   ├── schemas/
-│   │   ├── base.py           # Shared base schemas
-│   │   ├── calculation.py    # Calculation schemas
-│   │   ├── token.py          # Token schemas
-│   │   └── user.py           # User schemas
-│   ├── database.py           # Engine + session
-│   ├── database_init.py      # Create/drop tables
-│   ├── main.py               # FastAPI app + routes
-│   └── operations.py         # Arithmetic helpers
-├── templates/
-│   ├── layout.html
-│   ├── index.html
-│   ├── register.html
-│   ├── login.html
-│   └── dashboard.html
-├── static/
-│   ├── css/style.css
-│   └── js/script.js
-├── tests/
-│   ├── conftest.py
-│   ├── unit/
-│   │   └── test_calculator.py
-│   ├── integration/
-│   │   ├── test_database.py
-│   │   ├── test_dependencies.py
-│   │   ├── test_schema_base.py
-│   │   └── test_user_auth.py
-│   └── e2e/
-│       └── test_e2e.py
-├── .github/
-│   └── workflows/
-│       └── ci.yml
-├── .env.example
-├── docker-compose.yml
-├── Dockerfile
-├── init-db.sh
-├── pytest.ini
-└── requirements.txt
-```
