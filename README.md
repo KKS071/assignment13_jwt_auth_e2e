@@ -23,38 +23,43 @@ A FastAPI application with JWT authentication, PostgreSQL, Playwright E2E tests,
 assignment13_jwt_auth_e2e/
 ├── app/
 │   ├── auth/
-│   │   ├── dependencies.py   # FastAPI auth dependencies
-│   │   └── jwt.py            # Token creation/verification
+│   │   ├── dependencies.py       # FastAPI auth dependencies
+│   │   └── jwt.py                # Token creation/verification
 │   ├── core/
-│   │   └── config.py         # Settings via pydantic-settings
+│   │   ├── config.py             # Settings via pydantic-settings
+│   │   ├── dependencies.py       # Core dependencies
+│   │   ├── jwt.py                # Core JWT utilities
+│   │   └── redis.py              # Redis client setup
 │   ├── models/
-│   │   ├── calculation.py    # Polymorphic calculation ORM model
-│   │   └── user.py           # User ORM model with auth methods
+│   │   ├── calculation.py        # Polymorphic calculation ORM model
+│   │   └── user.py               # User ORM model with auth methods
 │   ├── schemas/
-│   │   ├── base.py           # Shared base schemas
-│   │   ├── calculation.py    # Calculation request/response schemas
-│   │   ├── token.py          # JWT token schemas
-│   │   └── user.py           # User request/response schemas
-│   ├── database.py           # Engine, session, get_db dependency
-│   ├── database_init.py      # init_db / drop_db with CASCADE support
-│   ├── main.py               # FastAPI app + all routes
-│   └── operations.py         # Arithmetic helper functions
+│   │   ├── base.py               # Shared base schemas
+│   │   ├── calculation.py        # Calculation request/response schemas
+│   │   ├── token.py              # JWT token schemas
+│   │   └── user.py               # User request/response schemas
+│   ├── operations/
+│   │   └── __init__.py           # Arithmetic helper functions
+│   ├── database.py               # Engine, session, get_db dependency
+│   ├── database_init.py          # init_db / drop_db with CASCADE support
+│   └── main.py                   # FastAPI app + all routes
 ├── templates/
 │   ├── layout.html
 │   ├── index.html
-│   ├── register.html         # Client-side validation + success/error alerts
-│   ├── login.html            # JWT stored in localStorage on success
-│   └── dashboard.html        # Calculations UI
+│   ├── register.html             # Client-side validation + success/error alerts
+│   ├── login.html                # JWT stored in localStorage on success
+│   └── dashboard.html            # Calculations UI
 ├── static/
 │   ├── css/style.css
 │   └── js/script.js
 ├── tests/
-│   ├── conftest.py           # Shared fixtures (DB, fastapi_server, Playwright)
-│   ├── unit/
-│   │   └── test_calculator.py
+│   ├── conftest.py               # Shared fixtures (DB, fastapi_server, Playwright)
+│   ├── e2e/
+│   │   └── test_fastapi_calculator.py   # Playwright E2E tests (positive + negative)
 │   ├── integration/
 │   │   ├── test_api.py
-│   │   ├── test_calculations.py
+│   │   ├── test_calculation.py
+│   │   ├── test_calculation_schema.py
 │   │   ├── test_database.py
 │   │   ├── test_dependencies.py
 │   │   ├── test_get_db.py
@@ -62,12 +67,11 @@ assignment13_jwt_auth_e2e/
 │   │   ├── test_schema_base.py
 │   │   ├── test_user.py
 │   │   └── test_user_auth.py
-│   └── e2e/
-│       └── test_e2e.py       # Playwright tests (positive + negative)
+│   └── unit/
+│       └── test_calculator.py
 ├── .github/
 │   └── workflows/
-│       └── ci.yml            # Linear pipeline: test → security → deploy
-├── pgadmin_servers.json      # Auto-registers the DB server in pgAdmin
+│       └── ci.yml                # Linear pipeline: test → security → deploy
 ├── .env.example
 ├── docker-compose.yml
 ├── Dockerfile
