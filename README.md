@@ -1,5 +1,8 @@
 # Assignment 13 – JWT Auth E2E
 
+[![CI](https://github.com/KKS071/assignment13_jwt_auth_e2e/actions/workflows/ci.yml/badge.svg)](https://github.com/KKS071/assignment13_jwt_auth_e2e/actions)
+[![Docker](https://img.shields.io/docker/v/kks59/601_module13?label=Docker%20Hub)](https://hub.docker.com/r/kks59/601_module13)
+
 A FastAPI application with JWT authentication, PostgreSQL, Playwright E2E tests, and a full CI/CD pipeline.
 
 - **GitHub:** https://github.com/KKS071/assignment13_jwt_auth_e2e
